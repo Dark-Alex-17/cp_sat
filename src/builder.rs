@@ -1,6 +1,7 @@
 use crate::{ffi, proto};
 use proto::constraint_proto::Constraint as CstEnum;
 use smallvec::SmallVec;
+use crate::proto::LinearArgumentProto;
 
 /// A builder for CP SAT.
 ///
@@ -96,6 +97,27 @@ impl CpModelBuilder {
     /// ```
     pub fn new_int_var(&mut self, domain: impl IntoIterator<Item = (i64, i64)>) -> IntVar {
         self.new_int_var_with_name(domain, "")
+    }
+
+    /// Removes the [IntVar] whose name matches the given name from the model.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cp_sat::builder::{CpModelBuilder, IntVar};
+    /// let mut model = CpModelBuilder::default();
+    /// let x = model.new_int_var_with_name([(0, 1)], "some cool name");
+    /// assert!(!model.proto().variables.is_empty());
+    /// let name = model.remove_int_var("some cool name");
+    /// assert!(model.proto().variables.is_empty());
+    pub fn remove_int_var(&mut self, name: &str) {
+        let position = self
+          .proto
+          .variables
+          .iter()
+          .position(|variable| variable.name == name)
+          .unwrap();
+        self.proto.variables.remove(position);
     }
 
     /// Creates a new integer variable with a name, and returns the
@@ -359,22 +381,22 @@ impl CpModelBuilder {
             vars: expr.vars.into_vec(),
             coeffs: expr.coeffs.into_vec(),
             domain: domain
-                .into_iter()
-                .flat_map(|(begin, end)| {
-                    [
-                        if begin == i64::MIN {
-                            i64::MIN
-                        } else {
-                            begin.saturating_sub(constant)
-                        },
-                        if end == i64::MAX {
-                            i64::MAX
-                        } else {
-                            end.saturating_sub(constant)
-                        },
-                    ]
-                })
-                .collect(),
+              .into_iter()
+              .flat_map(|(begin, end)| {
+                  [
+                      if begin == i64::MIN {
+                          i64::MIN
+                      } else {
+                          begin.saturating_sub(constant)
+                      },
+                      if end == i64::MAX {
+                          i64::MAX
+                      } else {
+                          end.saturating_sub(constant)
+                      },
+                  ]
+              })
+              .collect(),
         }))
     }
 
@@ -612,9 +634,9 @@ impl CpModelBuilder {
     pub fn add_hint(&mut self, var: impl Into<IntVar>, value: i64) {
         let var = var.into();
         let hints = self
-            .proto
-            .solution_hint
-            .get_or_insert_with(Default::default);
+          .proto
+          .solution_hint
+          .get_or_insert_with(Default::default);
         if var.0 < 0 {
             hints.vars.push(var.not().0);
             hints.values.push(1 - value);
