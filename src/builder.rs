@@ -349,9 +349,9 @@ impl CpModelBuilder {
     /// assert!(x_val != z_val);
     /// assert!(y_val != z_val);
     /// ```
-    pub fn add_all_different(&mut self, vars: impl IntoIterator<Item = IntVar>) -> Constraint {
+    pub fn add_all_different(&mut self, exprs: impl IntoIterator<Item = impl Into<LinearExpr>>) -> Constraint {
         self.add_cst(CstEnum::AllDiff(proto::AllDifferentConstraintProto {
-            vars: vars.into_iter().map(|v| v.0).collect(),
+            exprs: exprs.into_iter().map(|e| e.into().into()).collect(),
         }))
     }
 
@@ -549,6 +549,36 @@ impl CpModelBuilder {
     }
 
     /// Adds a constraint that force the `target` to be equal to the
+    /// product of the given `exprs`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
+    /// # use cp_sat::proto::CpSolverStatus;
+    /// let mut model = CpModelBuilder::default();
+    /// let x = model.new_int_var([(0, 10)]);
+    /// let y = model.new_int_var([(5, 15)]);
+    /// let m = model.new_int_var([(-200, 200)]);
+    /// model.add_mult_eq(m, [x, y]);
+    /// model.maximize(m);
+    /// let response = model.solve();
+    /// assert_eq!(response.status(), CpSolverStatus::Optimal);
+    /// assert_eq!(150., response.objective_value);
+    /// assert_eq!(150, m.solution_value(&response));
+    /// ```
+    pub fn add_mult_eq(
+        &mut self,
+        target: impl Into<LinearExpr>,
+        exprs: impl IntoIterator<Item = impl Into<LinearExpr>>,
+    ) -> Constraint {
+        self.add_cst(CstEnum::IntProd(proto::LinearArgumentProto {
+            target: Some(target.into().into()),
+            exprs: exprs.into_iter().map(|e| e.into().into()).collect(),
+        }))
+    }
+
+    /// Adds a constraint that force the `target` to be equal to the
     /// minimum of the given `exprs`.
     ///
     /// # Exemple
@@ -572,9 +602,9 @@ impl CpModelBuilder {
         target: impl Into<LinearExpr>,
         exprs: impl IntoIterator<Item = impl Into<LinearExpr>>,
     ) -> Constraint {
-        self.add_cst(CstEnum::LinMin(proto::LinearArgumentProto {
-            target: Some(target.into().into()),
-            exprs: exprs.into_iter().map(|e| e.into().into()).collect(),
+        self.add_cst(CstEnum::LinMax(proto::LinearArgumentProto {
+            target: Some((-target.into()).into()),
+            exprs: exprs.into_iter().map(|e| (-e.into()).into()).collect(),
         }))
     }
 
@@ -607,6 +637,7 @@ impl CpModelBuilder {
             exprs: exprs.into_iter().map(|e| e.into().into()).collect(),
         }))
     }
+
     fn add_cst(&mut self, cst: CstEnum) -> Constraint {
         let index = self.proto.constraints.len();
         self.proto.constraints.push(proto::ConstraintProto {
@@ -690,6 +721,10 @@ impl CpModelBuilder {
             coeffs: expr.coeffs.into_vec(),
             offset: expr.constant as f64,
             scaling_factor: 1.,
+            integer_before_offset: 0,
+            integer_after_offset: 0,
+            integer_scaling_factor: 0,
+            scaling_was_exact: true,
             domain: vec![],
         });
     }
@@ -719,6 +754,10 @@ impl CpModelBuilder {
             coeffs: expr.coeffs.into_vec(),
             offset: -expr.constant as f64,
             scaling_factor: -1.,
+            integer_before_offset: 0,
+            integer_after_offset: 0,
+            integer_scaling_factor: 0,
+            scaling_was_exact: true,
             domain: vec![],
         });
     }
