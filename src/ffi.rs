@@ -136,8 +136,8 @@ pub fn validate_cp_model(model: &proto::CpModelProto) -> String {
 /// # use cp_sat::proto::CpSolverStatus;
 /// # use cp_sat::ffi::solution_is_feasible;
 /// let mut model = CpModelBuilder::default();
-/// let x = model.new_bool_var();
-/// let y = model.new_bool_var();
+/// let x = model.new_bool_var("x");
+/// let y = model.new_bool_var("y");
 /// model.add_and([x, y]);
 /// assert!(solution_is_feasible(model.proto(), &[1, 1]));
 /// assert!(!solution_is_feasible(model.proto(), &[1, 0]));

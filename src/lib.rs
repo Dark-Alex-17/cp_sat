@@ -24,9 +24,9 @@
 //! fn main() {
 //!     let mut model = CpModelBuilder::default();
 //!
-//!     let x = model.new_int_var_with_name([(0, 2)], "x");
-//!     let y = model.new_int_var_with_name([(0, 2)], "y");
-//!     let z = model.new_int_var_with_name([(0, 2)], "z");
+//!     let x = model.new_int_var([(0, 2)], "x");
+//!     let y = model.new_int_var([(0, 2)], "y");
+//!     let z = model.new_int_var([(0, 2)], "z");
 //!
 //!     model.add_ne(x, y);
 //!

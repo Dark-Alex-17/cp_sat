@@ -1,7 +1,6 @@
 use crate::{ffi, proto};
 use proto::constraint_proto::Constraint as CstEnum;
 use smallvec::SmallVec;
-use crate::proto::LinearArgumentProto;
 
 /// A builder for CP SAT.
 ///
@@ -11,8 +10,8 @@ use crate::proto::LinearArgumentProto;
 /// # use cp_sat::builder::CpModelBuilder;
 /// # use cp_sat::proto::CpSolverStatus;
 /// let mut model = CpModelBuilder::default();
-/// let x = model.new_bool_var();
-/// let y = model.new_bool_var();
+/// let x = model.new_bool_var("x");
+/// let y = model.new_bool_var("y");
 /// model.add_and([x, y]);
 /// let response = model.solve();
 /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -30,8 +29,8 @@ impl CpModelBuilder {
         &self.proto
     }
 
-    /// Creates a new boolean variable, and returns the [BoolVar]
-    /// indentifier.
+    /// Creates a new boolean variable with the given name, and returns the [BoolVar]
+    /// identifier.
     ///
     /// A boolean variable can be converted to an [IntVar] with the
     /// `std::convert::From` trait. In this case it acts as a variable
@@ -46,30 +45,15 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::{CpModelBuilder, IntVar};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
+    /// let x = model.new_bool_var("x");
     /// model.add_and([!x]);
     /// let _x_integer: IntVar = x.into();
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
     /// assert!(!x.solution_value(&response));
-    /// ```
-    pub fn new_bool_var(&mut self) -> BoolVar {
-        self.new_bool_var_with_name("")
-    }
-
-    /// Creates a new boolean variable with a name, and returns the
-    /// [BoolVar] indentifier.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use cp_sat::builder::CpModelBuilder;
-    /// # use cp_sat::proto::CpSolverStatus;
-    /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var_with_name("x");
     /// assert_eq!("x", model.var_name(x));
     /// ```
-    pub fn new_bool_var_with_name(&mut self, name: impl Into<String>) -> BoolVar {
+    pub fn new_bool_var(&mut self, name: impl Into<String>) -> BoolVar {
         let index = self.proto.variables.len() as i32;
         self.proto.variables.push(proto::IntegerVariableProto {
             name: name.into(),
@@ -77,8 +61,9 @@ impl CpModelBuilder {
         });
         BoolVar(index)
     }
-    /// Creates a new integer variable, and returns the [IntVar]
-    /// indentifier.
+
+    /// Creates a new integer variable with the given name, and returns the [IntVar]
+    /// identifier.
     ///
     /// The domain of the variable is given. Bounds are included, so
     /// `[(0, 2), (4, 8)]` means [0, 2]∪[4, 8].
@@ -89,14 +74,24 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::{CpModelBuilder, IntVar};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 2), (4, 8)]);
+    /// let x = model.new_int_var([(0, 2), (4, 8)], "x");
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
     /// let x_val = x.solution_value(&response);
     /// assert!(0 <= x_val && x_val <= 2 || 4 <= x_val && 8 <= x_val);
+    /// assert_eq!("x", model.var_name(x));
     /// ```
-    pub fn new_int_var(&mut self, domain: impl IntoIterator<Item = (i64, i64)>) -> IntVar {
-        self.new_int_var_with_name(domain, "")
+    pub fn new_int_var(
+        &mut self,
+        domain: impl IntoIterator<Item = (i64, i64)>,
+        name: impl Into<String>,
+    ) -> IntVar {
+        let index = self.proto.variables.len() as i32;
+        self.proto.variables.push(proto::IntegerVariableProto {
+            name: name.into(),
+            domain: domain.into_iter().flat_map(|(b, e)| [b, e]).collect(),
+        });
+        IntVar(index)
     }
 
     /// Removes the [IntVar] whose name matches the given name from the model.
@@ -106,7 +101,7 @@ impl CpModelBuilder {
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, IntVar};
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var_with_name([(0, 1)], "some cool name");
+    /// let x = model.new_int_var([(0, 1)], "some cool name");
     /// assert!(!model.proto().variables.is_empty());
     /// let name = model.remove_int_var("some cool name");
     /// assert!(model.proto().variables.is_empty());
@@ -120,42 +115,17 @@ impl CpModelBuilder {
         self.proto.variables.remove(position);
     }
 
-    /// Creates a new integer variable with a name, and returns the
-    /// [IntVar] indentifier.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use cp_sat::builder::CpModelBuilder;
-    /// # use cp_sat::proto::CpSolverStatus;
-    /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var_with_name([(0, 10)], "x");
-    /// assert_eq!("x", model.var_name(x));
-    /// ```
-    pub fn new_int_var_with_name(
-        &mut self,
-        domain: impl IntoIterator<Item = (i64, i64)>,
-        name: impl Into<String>,
-    ) -> IntVar {
-        let index = self.proto.variables.len() as i32;
-        self.proto.variables.push(proto::IntegerVariableProto {
-            name: name.into(),
-            domain: domain.into_iter().flat_map(|(b, e)| [b, e]).collect(),
-        });
-        IntVar(index)
-    }
-
-    /// Returns the name of a variable, empty string if not setted.
+    /// Returns the name of a variable.
     ///
     /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::CpModelBuilder;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var_with_name("x");
+    /// let x = model.new_bool_var("x");
     /// assert_eq!("x", model.var_name(x));
-    /// let y = model.new_int_var([(0, 2)]);
-    /// assert_eq!("", model.var_name(y));
+    /// let y = model.new_int_var([(0, 2)], "y");
+    /// assert_eq!("y", model.var_name(y));
     /// ```
     pub fn var_name(&self, var: impl Into<IntVar>) -> &str {
         &self.proto.variables[var.into().0 as usize].name
@@ -168,7 +138,7 @@ impl CpModelBuilder {
     /// ```
     /// # use cp_sat::builder::CpModelBuilder;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
+    /// let x = model.new_bool_var("y");
     /// model.set_var_name(x, "x");
     /// assert_eq!("x", model.var_name(x));
     /// ```
@@ -176,14 +146,46 @@ impl CpModelBuilder {
         self.proto.variables[var.into().0 as usize].name = name.into();
     }
 
-    /// Returns the name of a constraint, empty string if not setted.
+    /// Extracts the domain for an [IntVar]
     ///
     /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::CpModelBuilder;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
+    /// let x = model.new_int_var([(0, 10)], "x");
+    /// assert_eq!((0, 10), model.int_var_domain(x));
+    /// ```
+    pub fn int_var_domain(&self, int_var: IntVar) -> (i64, i64) {
+        let integer_variable_proto = self.proto.variables.iter().find(|variable| variable.name == self.var_name(int_var)).unwrap();
+
+        (*integer_variable_proto.domain.first().unwrap(), *integer_variable_proto.domain.last().unwrap())
+    }
+
+    /// Changes the domain of the [IntVar] with the given name
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cp_sat::builder::CpModelBuilder;
+    /// let mut model = CpModelBuilder::default();
+    /// let x = model.new_int_var([(0, 10)], "x");
+    /// model.set_int_var_domain("x", (-10, 10));
+    /// assert_eq!((-10, 10), model.int_var_domain(x));
+    /// ```
+    pub fn set_int_var_domain(&mut self, name: &str, bounds: (i64, i64)) -> IntVar {
+        self.remove_int_var(name);
+        self.new_int_var([bounds], name)
+    }
+
+    /// Returns the name of a constraint, empty string if not set.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cp_sat::builder::CpModelBuilder;
+    /// let mut model = CpModelBuilder::default();
+    /// let x = model.new_bool_var("x");
     /// let constraint = model.add_or([x]);
     /// assert_eq!("", model.constraint_name(constraint));
     /// model.set_constraint_name(constraint, "or");
@@ -200,7 +202,7 @@ impl CpModelBuilder {
     /// ```
     /// # use cp_sat::builder::CpModelBuilder;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
+    /// let x = model.new_bool_var("x");
     /// let constraint = model.add_or([x]);
     /// model.set_constraint_name(constraint, "or");
     /// assert_eq!("or", model.constraint_name(constraint));
@@ -217,8 +219,8 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
-    /// let y = model.new_bool_var();
+    /// let x = model.new_bool_var("x");
+    /// let y = model.new_bool_var("y");
     /// model.add_or([x, y]);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -238,8 +240,8 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
-    /// let y = model.new_bool_var();
+    /// let x = model.new_bool_var("x");
+    /// let y = model.new_bool_var("y");
     /// model.add_and([x, y]);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -260,7 +262,7 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let vars: Vec<_> = (0..10).map(|_| model.new_bool_var()).collect();
+    /// let vars: Vec<_> = (0..10).map(|i| model.new_bool_var("")).collect();
     /// model.add_at_most_one(vars.iter().copied());
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -285,16 +287,11 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let vars: Vec<_> = (0..10).map(|_| model.new_bool_var()).collect();
+    /// let vars: Vec<_> = (0..10).map(|i| model.new_bool_var(format!("x{i}"))).collect();
     /// model.add_exactly_one(vars.iter().copied());
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
-    /// assert!(
-    ///     vars.iter()
-    ///         .map(|v| v.solution_value(&response) as u32)
-    ///         .sum::<u32>()
-    ///         == 1
-    /// );
+    /// assert_eq!(vars.iter().map(|v| v.solution_value(&response) as u32).sum::<u32>(), 1);
     /// ```
     pub fn add_exactly_one(&mut self, vars: impl IntoIterator<Item = BoolVar>) -> Constraint {
         self.add_cst(CstEnum::ExactlyOne(proto::BoolArgumentProto {
@@ -310,17 +307,11 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let vars: Vec<_> = (0..10).map(|_| model.new_bool_var()).collect();
+    /// let vars: Vec<_> = (0..10).map(|i| model.new_bool_var(format!("x{i}"))).collect();
     /// model.add_xor(vars.iter().copied());
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
-    /// assert!(
-    ///     vars.iter()
-    ///         .map(|v| v.solution_value(&response) as u32)
-    ///         .sum::<u32>()
-    ///         % 2
-    ///         == 1
-    /// );
+    /// assert_eq!(vars.iter().map(|v| v.solution_value(&response) as u32).sum::<u32>() % 2, 1);
     /// ```
     pub fn add_xor(&mut self, vars: impl IntoIterator<Item = BoolVar>) -> Constraint {
         self.add_cst(CstEnum::BoolXor(proto::BoolArgumentProto {
@@ -336,18 +327,18 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 2)]);
-    /// let y = model.new_int_var([(0, 2)]);
-    /// let z = model.new_int_var([(0, 2)]);
+    /// let x = model.new_int_var([(0, 2)], "x");
+    /// let y = model.new_int_var([(0, 2)], "y");
+    /// let z = model.new_int_var([(0, 2)], "z");
     /// model.add_all_different([x, y, z]);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
     /// let x_val = x.solution_value(&response);
     /// let y_val = y.solution_value(&response);
     /// let z_val = z.solution_value(&response);
-    /// assert!(x_val != y_val);
-    /// assert!(x_val != z_val);
-    /// assert!(y_val != z_val);
+    /// assert_ne!(x_val, y_val);
+    /// assert_ne!(x_val, z_val);
+    /// assert_ne!(y_val, z_val);
     /// ```
     pub fn add_all_different(&mut self, exprs: impl IntoIterator<Item = impl Into<LinearExpr>>) -> Constraint {
         self.add_cst(CstEnum::AllDiff(proto::AllDifferentConstraintProto {
@@ -357,14 +348,14 @@ impl CpModelBuilder {
 
     /// Adds a linear constraint.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 100)]);
-    /// let y = model.new_int_var([(0, 100)]);
+    /// let x = model.new_int_var([(0, 100)], "x");
+    /// let y = model.new_int_var([(0, 100)], "y");
     /// model.add_linear_constraint([(1, x), (3, y)], [(301, i64::MAX)]);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -402,14 +393,14 @@ impl CpModelBuilder {
 
     /// Adds an equality constraint between 2 linear expressions.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 50)]);
-    /// let y = model.new_int_var([(53, 100)]);
+    /// let x = model.new_int_var([(0, 50)], "x");
+    /// let y = model.new_int_var([(53, 100)], "y");
     /// model.add_eq(y, LinearExpr::from(x) + 3);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -433,8 +424,8 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 50)]);
-    /// let y = model.new_int_var([(50, 100)]);
+    /// let x = model.new_int_var([(0, 50)], "x");
+    /// let y = model.new_int_var([(50, 100)], "y");
     /// model.add_ge(x, y);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -450,16 +441,16 @@ impl CpModelBuilder {
         self.add_linear_constraint(lhs.into() - rhs.into(), [(0, i64::MAX)])
     }
 
-    /// Adds a lesser or equal constraint between 2 linear expressions.
+    /// Adds a less than or equal to constraint between 2 linear expressions.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(50, 100)]);
-    /// let y = model.new_int_var([(0, 50)]);
+    /// let x = model.new_int_var([(50, 100)], "x");
+    /// let y = model.new_int_var([(0, 50)], "y");
     /// model.add_le(x, y);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -475,16 +466,39 @@ impl CpModelBuilder {
         self.add_linear_constraint(lhs.into() - rhs.into(), [(i64::MIN, 0)])
     }
 
-    /// Adds a stricly greater constraint between 2 linear expressions.
+    /// Adds a less than or equal to constraint between a linear expression and some domain.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 51)]);
-    /// let y = model.new_int_var([(50, 100)]);
+    /// let x = model.new_int_var([(50, 100)], "x");
+    /// model.add_leq(x, (0, 75));
+    /// let response = model.solve();
+    /// assert_eq!(response.status(), CpSolverStatus::Optimal);
+    /// assert!(x.solution_value(&response) <= 75);
+    /// assert_eq!(50, x.solution_value(&response));
+    /// ```
+    pub fn add_leq<T: Into<LinearExpr>>(
+        &mut self,
+        lhs: T,
+        rhs: (i64, i64),
+    ) -> Constraint {
+        self.add_linear_constraint(lhs.into(), [rhs])
+    }
+
+    /// Adds a strictly greater constraint between 2 linear expressions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
+    /// # use cp_sat::proto::CpSolverStatus;
+    /// let mut model = CpModelBuilder::default();
+    /// let x = model.new_int_var([(0, 51)], "x");
+    /// let y = model.new_int_var([(50, 100)], "y");
     /// model.add_gt(x, y);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -502,14 +516,14 @@ impl CpModelBuilder {
 
     /// Adds a strictly lesser constraint between 2 linear expressions.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(50, 100)]);
-    /// let y = model.new_int_var([(0, 51)]);
+    /// let x = model.new_int_var([(50, 100)], "x");
+    /// let y = model.new_int_var([(0, 51)], "y");
     /// model.add_lt(x, y);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -527,17 +541,17 @@ impl CpModelBuilder {
 
     /// Adds a not equal constraint between 2 linear expressions.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
+    /// let x = model.new_bool_var("x");
     /// model.add_ne(x, 1);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
-    /// assert!(x.solution_value(&response) as i64 != 1);
+    /// assert_ne!(x.solution_value(&response) as i64, 1);
     /// assert!(!x.solution_value(&response));
     /// ```
     pub fn add_ne<T: Into<LinearExpr>, U: Into<LinearExpr>>(
@@ -557,9 +571,9 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 10)]);
-    /// let y = model.new_int_var([(5, 15)]);
-    /// let m = model.new_int_var([(-200, 200)]);
+    /// let x = model.new_int_var([(0, 10)], "x");
+    /// let y = model.new_int_var([(5, 15)], "y");
+    /// let m = model.new_int_var([(-200, 200)], "m");
     /// model.add_mult_eq(m, [x, y]);
     /// model.maximize(m);
     /// let response = model.solve();
@@ -581,15 +595,15 @@ impl CpModelBuilder {
     /// Adds a constraint that force the `target` to be equal to the
     /// minimum of the given `exprs`.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 10)]);
-    /// let y = model.new_int_var([(5, 15)]);
-    /// let m = model.new_int_var([(-100, 100)]);
+    /// let x = model.new_int_var([(0, 10)], "x");
+    /// let y = model.new_int_var([(5, 15)], "y");
+    /// let m = model.new_int_var([(-100, 100)], "m");
     /// model.add_min_eq(m, [x, y]);
     /// model.maximize(m);
     /// let response = model.solve();
@@ -611,15 +625,15 @@ impl CpModelBuilder {
     /// Adds a constraint that force the `target` to be equal to the
     /// maximum of the given `exprs`.
     ///
-    /// # Exemple
+    /// # Example
     ///
     /// ```
     /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 10)]);
-    /// let y = model.new_int_var([(5, 15)]);
-    /// let m = model.new_int_var([(-100, 100)]);
+    /// let x = model.new_int_var([(0, 10)], "x");
+    /// let y = model.new_int_var([(5, 15)], "y");
+    /// let m = model.new_int_var([(-100, 100)], "m");
     /// model.add_max_eq(m, [x, y]);
     /// model.minimize(m);
     /// let response = model.solve();
@@ -655,8 +669,8 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 100)]);
-    /// let y = model.new_bool_var();
+    /// let x = model.new_int_var([(0, 100)], "x");
+    /// let y = model.new_bool_var("y");
     /// model.add_hint(x, 42);
     /// model.add_hint(y, 1);
     /// let response = model.solve();
@@ -685,8 +699,8 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 100)]);
-    /// let y = model.new_bool_var();
+    /// let x = model.new_int_var([(0, 100)], "x");
+    /// let y = model.new_bool_var("y");
     /// model.add_hint(x, 42);
     /// model.add_hint(y, 1);
     /// model.del_hints();
@@ -707,7 +721,7 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 100)]);
+    /// let x = model.new_int_var([(0, 100)], "x");
     /// model.minimize(x);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -737,7 +751,7 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 100)]);
+    /// let x = model.new_int_var([(0, 100)], "x");
     /// model.maximize(x);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -787,7 +801,7 @@ impl CpModelBuilder {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::CpSolverStatus;
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, -1)]);
+    /// let x = model.new_int_var([(0, -1)], "x");
     /// model.maximize(x);
     /// assert!(!model.validate_cp_model().is_empty());
     /// ```
@@ -845,7 +859,7 @@ impl BoolVar {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::{CpSolverStatus, SatParameters};
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_bool_var();
+    /// let x = model.new_bool_var("x");
     /// model.add_or([x]);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -897,7 +911,7 @@ impl IntVar {
     /// # use cp_sat::builder::CpModelBuilder;
     /// # use cp_sat::proto::{CpSolverStatus, SatParameters};
     /// let mut model = CpModelBuilder::default();
-    /// let x = model.new_int_var([(0, 42)]);
+    /// let x = model.new_int_var([(0, 42)], "x");
     /// model.maximize(x);
     /// let response = model.solve();
     /// assert_eq!(response.status(), CpSolverStatus::Optimal);
@@ -926,7 +940,7 @@ pub struct Constraint(usize);
 /// It describes an expression in the form `ax+by+c`. Several [From]
 /// and [std::ops] traits are implemented for easy modeling.
 ///
-/// # Exemple
+/// # Example
 ///
 /// Most of the builder methods that takes something linear take in
 /// practice a `impl Into<LinearExpr>`.  In the example, we will use
@@ -935,10 +949,10 @@ pub struct Constraint(usize);
 /// ```
 /// # use cp_sat::builder::{CpModelBuilder, LinearExpr};
 /// let mut model = CpModelBuilder::default();
-/// let x1 = model.new_int_var([(0, 100)]);
-/// let x2 = model.new_int_var([(0, 100)]);
-/// let y1 = model.new_bool_var();
-/// let y2 = model.new_bool_var();
+/// let x1 = model.new_int_var([(0, 100)], "x1");
+/// let x2 = model.new_int_var([(0, 100)], "x2");
+/// let y1 = model.new_bool_var("y1");
+/// let y2 = model.new_bool_var("y2");
 /// model.maximize(x1); // IntVar can be converted in LinearExpr
 /// model.maximize(y1); // as BoolVar
 /// model.maximize(42); // as i64
@@ -949,7 +963,7 @@ pub struct Constraint(usize);
 /// model.maximize([(42, x1), (1337, y2.into())]); // BoolVar conversion
 ///
 /// // for easy looping, we can also modify a LinearExpr
-/// let vars: Vec<_> = (0..10).map(|_| model.new_bool_var()).collect();
+/// let vars: Vec<_> = (0..10).map(|i| model.new_bool_var(format!("x{i}"))).collect();
 /// let mut expr = LinearExpr::default(); // means 0, can also be LinearExpr::from(0)
 /// for (i, v) in vars.iter().copied().enumerate() {
 ///     match i {
@@ -1062,7 +1076,7 @@ impl From<LinearExpr> for proto::LinearExpressionProto {
     }
 }
 
-impl<T: Into<LinearExpr>> std::iter::Extend<T> for LinearExpr {
+impl<T: Into<LinearExpr>> Extend<T> for LinearExpr {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for e in iter {
             *self += e;
