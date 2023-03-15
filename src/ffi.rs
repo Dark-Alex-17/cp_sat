@@ -17,6 +17,11 @@ extern "C" {
         out_size: &mut usize,
     ) -> *mut u8;
     fn cp_sat_wrapper_cp_model_stats(model_buf: *const u8, model_size: usize) -> *mut c_char;
+    fn cp_sat_wrapper_cp_solver_response_stats(
+        response_buf: *const u8,
+        response_size: usize,
+        has_objective: bool,
+    ) -> *mut c_char;
     fn cp_sat_wrapper_validate_cp_model(model_buf: *const u8, model_size: usize) -> *mut c_char;
     fn cp_sat_wrapper_solution_is_feasible(
         model_buf: *const u8,
@@ -73,6 +78,29 @@ pub fn cp_model_stats(model: &proto::CpModelProto) -> String {
     let mut model_buf = Vec::default();
     model.encode(&mut model_buf).unwrap();
     let char_ptr = unsafe { cp_sat_wrapper_cp_model_stats(model_buf.as_ptr(), model_buf.len()) };
+    let res = unsafe { CStr::from_ptr(char_ptr) }
+        .to_str()
+        .unwrap()
+        .to_owned();
+    unsafe { libc::free(char_ptr as _) };
+    res
+}
+
+/// Returns a string with some statistics on the solver response.
+///
+/// If the second argument is false, we will just display NA for the
+/// objective value instead of zero. It is not really needed but it
+/// makes things a bit clearer to see that there is no objective.
+pub fn cp_solver_response_stats(response: &proto::CpSolverResponse, has_objective: bool) -> String {
+    let mut response_buf = Vec::default();
+    response.encode(&mut response_buf).unwrap();
+    let char_ptr = unsafe {
+        cp_sat_wrapper_cp_solver_response_stats(
+            response_buf.as_ptr(),
+            response_buf.len(),
+            has_objective,
+        )
+    };
     let res = unsafe { CStr::from_ptr(char_ptr) }
         .to_str()
         .unwrap()

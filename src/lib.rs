@@ -33,7 +33,7 @@
 //!     let response = model.solve();
 //!     println!(
 //!         "{}",
-//!         cp_sat::ffi::cp_model_stats(&model.proto())
+//!         cp_sat::ffi::cp_solver_response_stats(&response, false)
 //!     );
 //!
 //!     if response.status() == CpSolverStatus::Optimal {
