@@ -62,20 +62,6 @@ cp_sat_wrapper_cp_model_stats(unsigned char* model_buf, size_t model_size) {
 }
 
 extern "C" char*
-cp_sat_wrapper_cp_solver_response_stats(
-    unsigned char* response_buf,
-    size_t response_size,
-    bool has_objective)
-{
-    sat::CpSolverResponse response;
-    const bool res = response.ParseFromArray(response_buf, response_size);
-    assert(res);
-
-    const std::string stats = sat::CpSolverResponseStats(response, has_objective);
-    return strdup(stats.c_str());
-}
-
-extern "C" char*
 cp_sat_wrapper_validate_cp_model(unsigned char* model_buf, size_t model_size) {
     sat::CpModelProto model;
     const bool res = model.ParseFromArray(model_buf, model_size);
