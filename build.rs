@@ -18,7 +18,7 @@ fn main() {
             .include(&[&ortools_prefix, "/include"].concat())
             .compile("cp_sat_wrapper.a");
 
-        println!("cargo:rustc-link-search=/opt/ortools/lib");
+        println!("cargo:rustc-link-lib=dylib=ortools");
         println!("cargo:rustc-link-search=native={}/lib", ortools_prefix);
     }
 }
